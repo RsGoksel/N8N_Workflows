@@ -53,10 +53,6 @@ workflow-name/
 └── sample-output.html         # Visual preview of expected output
 ```
 
-## License
-
-MIT — use, modify, distribute, sell. See [LICENSE](./LICENSE).
-
 ## Maintainer
 
 [@RsGoksel](https://github.com/RsGoksel)
