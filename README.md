@@ -6,8 +6,11 @@ Each folder is a self-contained workflow with its own setup wizard, no manual cr
 ## Workflows
 
 | Workflow | What It Does | Stack | Cost |
-|----------|-------------|-------|------|
-| [daily-stock-brief](./daily-stock-brief) | Sabah 09:00'da Türkçe AI piyasa brifingi mail kutuna düşer | Alpaca + xAI Grok + Gmail | ~$0.55/yıl |
+|----------|--------------|-------|------|
+| [daily-stock-brief](./daily-stock-brief) | Turkish AI brief of the US market every weekday at 9 AM via email | Alpaca + xAI Grok + Gmail | ~$0.55/yr |
+| [crypto-signal-bot](./crypto-signal-bot) | Structured BUY/SELL/HOLD crypto signals to your Telegram every 30 min | Binance + xAI Grok + Telegram | $2–7/yr |
+
+> See [RESEARCH.md](./RESEARCH.md) for the market study behind these workflows — which n8n automations actually sell on Gumroad/Etsy, and pricing ranges by category.
 
 ## Why This Repo
 
@@ -25,13 +28,13 @@ You spend an hour wiring credentials, debugging node connections, and figuring o
 
 ```bash
 # 1. Pick a workflow
-cd daily-stock-brief
+cd daily-stock-brief        # or: cd crypto-signal-bot
 
 # 2. Run installer
 ./setup.sh        # macOS / Linux
 .\setup.ps1       # Windows
 
-# 3. Follow prompts (3-5 dakika)
+# 3. Follow prompts (3-5 minutes)
 ```
 
 ## Requirements

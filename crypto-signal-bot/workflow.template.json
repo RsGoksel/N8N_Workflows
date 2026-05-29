@@ -1,0 +1,248 @@
+{
+  "name": "Crypto Signal Bot — Binance + Grok + Telegram",
+  "nodes": [
+    {
+      "id": "trig-manual",
+      "name": "Manual Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 200],
+      "parameters": {}
+    },
+    {
+      "id": "trig-schedule",
+      "name": "Every 30 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [240, 420],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, 320],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "watchlist",
+              "value": "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,DOGEUSDT,ADAUSDT,AVAXUSDT",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "telegramChatId",
+              "value": "{{TELEGRAM_CHAT_ID}}",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "llmModel",
+              "value": "grok-3-mini",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "topMoverCount",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "c5",
+              "name": "minVolume24hUsd",
+              "value": 10000000,
+              "type": "number"
+            },
+            {
+              "id": "c6",
+              "name": "language",
+              "value": "tr",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "binance-ticker",
+      "name": "Binance 24h Ticker (All)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [720, 320],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.binance.com/api/v3/ticker/24hr",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "id": "analyze-market",
+      "name": "Analyze Market & Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 320],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const config = $('Config').first().json;\nconst allTickers = $('Binance 24h Ticker (All)').first().json;\n\nif (!Array.isArray(allTickers)) {\n  throw new Error('Binance API returned non-array (likely rate-limited or down)');\n}\n\n// Filter to clean spot USDT pairs (exclude leveraged tokens)\nconst excludeSuffixes = ['UPUSDT', 'DOWNUSDT', 'BEARUSDT', 'BULLUSDT'];\nconst usdtPairs = allTickers.filter(t =>\n  t.symbol.endsWith('USDT') &&\n  !excludeSuffixes.some(suf => t.symbol.endsWith(suf))\n);\n\n// Tradeable = has minimum 24h volume\nconst minVol = config.minVolume24hUsd || 10000000;\nconst tradeable = usdtPairs.filter(t => parseFloat(t.quoteVolume) > minVol);\n\nconst topN = config.topMoverCount || 5;\nconst sortedGainers = [...tradeable].sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));\nconst sortedLosers  = [...tradeable].sort((a, b) => parseFloat(a.priceChangePercent) - parseFloat(b.priceChangePercent));\n\n// Watchlist (always include even if low volume)\nconst watchSymbols = (config.watchlist || 'BTCUSDT,ETHUSDT').split(',').map(s => s.trim().toUpperCase());\nconst tickerMap = Object.fromEntries(allTickers.map(t => [t.symbol, t]));\nconst watchData = watchSymbols.map(sym => tickerMap[sym]).filter(Boolean);\n\nconst fmt = (t) => ({\n  symbol: t.symbol.replace(/USDT$/, ''),\n  price: parseFloat(t.lastPrice),\n  change24hPct: Number(parseFloat(t.priceChangePercent).toFixed(2)),\n  volume24hUsd: Math.round(parseFloat(t.quoteVolume)),\n  high24h: parseFloat(t.highPrice),\n  low24h: parseFloat(t.lowPrice),\n});\n\nconst payload = {\n  timestamp: new Date().toISOString(),\n  timestampLocal: new Date().toLocaleString(config.language === 'tr' ? 'tr-TR' : 'en-US', { timeZone: 'Europe/Istanbul' }),\n  topGainers: sortedGainers.slice(0, topN).map(fmt),\n  topLosers:  sortedLosers.slice(0, topN).map(fmt),\n  watchlist:  watchData.map(fmt),\n};\n\n// Build LLM prompt\nconst isTurkish = config.language === 'tr';\nconst systemPrompt = isTurkish\n  ? 'Sen profesyonel bir kripto piyasası analistisin. Verilen anlık piyasa verisinden, kısa ve aksiyona yönelik sinyaller üret. Türkçe akıcı yaz. Çıktın YALNIZCA JSON olmalı, hiçbir açıklama veya markdown kullanma.'\n  : 'You are a professional crypto market analyst. From the live data, produce concise actionable signals. Output ONLY valid JSON — no markdown or commentary.';\n\nconst userPrompt = (isTurkish\n  ? `Anlık kripto piyasa verisi (Binance USDT spot):\\n${JSON.stringify(payload, null, 2)}\\n\\nAşağıdaki şemada JSON üret:\\n{\\n  \"marketSentiment\": \"BULLISH|BEARISH|NEUTRAL\",\\n  \"sentimentReasoning\": \"1 cümle\",\\n  \"signals\": [\\n    {\\n      \"symbol\": \"BTC\",\\n      \"direction\": \"LONG|SHORT|HOLD\",\\n      \"entry\": 67000,\\n      \"stopLoss\": 65000,\\n      \"takeProfit\": 70000,\\n      \"confidence\": 0.7,\\n      \"reasoning\": \"1-2 cümle Türkçe\"\\n    }\\n  ],\\n  \"topPick\": \"En iyi fırsat ve kısa neden\"\\n}\\n\\nKurallar: Watchlist'teki HER coin + top 3 gainer için bir signal üret. Confidence 0-1 arası. Entry ÖNERİSİ olarak güncel fiyata yakın bir seviye (limit order için). StopLoss kayıp kabul edilebilecek seviye, TakeProfit makul hedef. Direction HOLD ise SL/TP için 0 yaz.`\n  : `Current crypto market data (Binance USDT spot):\\n${JSON.stringify(payload, null, 2)}\\n\\nGenerate JSON with this shape:\\n{\\n  \"marketSentiment\": \"BULLISH|BEARISH|NEUTRAL\",\\n  \"sentimentReasoning\": \"1 sentence\",\\n  \"signals\": [\\n    {\\n      \"symbol\": \"BTC\",\\n      \"direction\": \"LONG|SHORT|HOLD\",\\n      \"entry\": 67000,\\n      \"stopLoss\": 65000,\\n      \"takeProfit\": 70000,\\n      \"confidence\": 0.7,\\n      \"reasoning\": \"1-2 concise sentences\"\\n    }\\n  ],\\n  \"topPick\": \"Best opportunity + brief why\"\\n}\\n\\nRules: Generate a signal for EVERY watchlist coin + top 3 gainers. Confidence 0-1. Entry should be a realistic limit order level near current price. StopLoss = acceptable loss point. TakeProfit = realistic target. If HOLD, use 0 for SL/TP.`);\n\nreturn [{ json: { ...payload, systemPrompt, userPrompt, language: config.language } }];\n"
+      }
+    },
+    {
+      "id": "grok-call",
+      "name": "Generate Signals (Grok)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1200, 320],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Config').first().json.llmModel, temperature: 0.3, reasoning_effort: 'low', response_format: { type: 'json_object' }, messages: [{ role: 'system', content: $json.systemPrompt }, { role: 'user', content: $json.userPrompt }] }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "{{GROK_CRED_ID}}",
+          "name": "xAI Grok"
+        }
+      }
+    },
+    {
+      "id": "format-telegram",
+      "name": "Format Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 320],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const resp = $input.first().json;\nconst raw = resp?.choices?.[0]?.message?.content ?? '';\nconst lang = $('Analyze Market & Build Prompt').first().json.language || 'tr';\nconst isTr = lang === 'tr';\n\n// Strip code fences if Grok wrapped output\nconst cleaned = raw.replace(/^```json\\s*/i, '').replace(/\\s*```\\s*$/i, '').trim();\n\nlet signal;\ntry { signal = JSON.parse(cleaned); }\ncatch (e) {\n  const fallback = isTr\n    ? `⚠️ <b>Sinyal Üretilemedi</b>\\n\\nGrok yanıtı JSON olarak parse edilemedi:\\n<pre>${cleaned.slice(0, 400)}</pre>`\n    : `⚠️ <b>Signal Generation Failed</b>\\n\\nGrok response not valid JSON:\\n<pre>${cleaned.slice(0, 400)}</pre>`;\n  return [{ json: { text: fallback, parse_mode: 'HTML' } }];\n}\n\nconst dirEmoji = { LONG: '🟢', SHORT: '🔴', HOLD: '⚪' };\nconst sentEmoji = { BULLISH: '📈', BEARISH: '📉', NEUTRAL: '➡️' };\n\nconst headerWord = isTr ? 'Kripto Sinyalleri' : 'Crypto Signals';\nconst confWord = isTr ? 'Güven' : 'Confidence';\nconst topPickWord = isTr ? 'Öne Çıkan' : 'Top Pick';\nconst disclaimer = isTr\n  ? '<i>Bu bir yatırım tavsiyesi değildir. Veri: Binance + xAI Grok.</i>'\n  : '<i>Not financial advice. Data: Binance + xAI Grok.</i>';\n\nconst fmtPrice = (n) => {\n  if (n === 0) return '—';\n  if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 2 });\n  if (n >= 1)    return n.toFixed(2);\n  if (n >= 0.01) return n.toFixed(4);\n  return n.toFixed(8);\n};\n\nconst lines = [];\nconst ts = $('Analyze Market & Build Prompt').first().json.timestampLocal;\nlines.push(`<b>${headerWord}</b>  ${sentEmoji[signal.marketSentiment] || ''} <b>${signal.marketSentiment ?? '?'}</b>`);\nlines.push(`<i>${ts}</i>`);\nif (signal.sentimentReasoning) lines.push(`<i>${signal.sentimentReasoning}</i>`);\nlines.push('');\n\nfor (const s of signal.signals ?? []) {\n  const e = dirEmoji[s.direction] || '•';\n  lines.push(`${e} <b>${s.symbol}</b> — ${s.direction}`);\n  if (s.direction !== 'HOLD' && s.entry) {\n    lines.push(`   Entry <code>${fmtPrice(s.entry)}</code>  •  SL <code>${fmtPrice(s.stopLoss)}</code>  •  TP <code>${fmtPrice(s.takeProfit)}</code>`);\n  }\n  if (typeof s.confidence === 'number') {\n    lines.push(`   ${confWord}: <b>${Math.round(s.confidence * 100)}%</b>`);\n  }\n  if (s.reasoning) lines.push(`   <i>${s.reasoning}</i>`);\n  lines.push('');\n}\n\nif (signal.topPick) {\n  lines.push(`🎯 <b>${topPickWord}:</b> ${signal.topPick}`);\n  lines.push('');\n}\nlines.push(disclaimer);\n\nconst text = lines.join('\\n').slice(0, 4000); // Telegram limit\n\nreturn [{ json: { text, parse_mode: 'HTML', signal } }];\n"
+      }
+    },
+    {
+      "id": "telegram-send",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1680, 320],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Config').first().json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "{{TELEGRAM_CRED_ID}}",
+          "name": "Telegram Bot"
+        }
+      },
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "note-arch",
+      "name": "Architecture",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 40],
+      "parameters": {
+        "width": 720,
+        "height": 130,
+        "content": "## 🤖 Crypto Signal Bot — Binance + Grok + Telegram\n\n**Trigger:** Every 30 min (configurable) or manual\n\n**Flow:** Config → Binance 24h ticker (no auth) → JS analyze top movers + watchlist → Grok structured signal JSON → Format HTML for Telegram → Telegram bot sends to your chat/channel\n\n**Edit Config node:** watchlist, telegramChatId, minVolume24hUsd, llmModel, language (tr/en). No restart needed."
+      }
+    },
+    {
+      "id": "note-cost",
+      "name": "Cost & Limits",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1000, 40],
+      "parameters": {
+        "width": 720,
+        "height": 130,
+        "content": "## 💰 Cost: ~$2/year\n\n- **Binance API:** Free, no auth needed for public ticker data (rate limit 1200 req/min — plenty)\n- **Grok 3 mini:** ~$0.002/call. 30-min schedule × 24h × 365 = 17.5k calls/yr = $35/yr (24/7).\n  - **Cheaper:** Run 09:00–22:00 weekdays only = ~3k calls/yr = $6/yr\n  - Switch to `grok-3` for higher quality (~10× cost)\n- **Telegram bot:** Free, 30 msg/sec rate limit (you'll hit at most 1/30min)"
+      }
+    },
+    {
+      "id": "note-test",
+      "name": "Test First Run",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1740, 40],
+      "parameters": {
+        "width": 380,
+        "height": 200,
+        "content": "## ▶️ Test\n\n**Manual run:** Ctrl+Enter or 'Execute workflow' bottom-right.\n\n**Expected:** All nodes green ✓, message arrives in Telegram chat in 15-20 sec.\n\n**If signal looks wrong:** Tweak the prompt in `Analyze Market & Build Prompt` node — the LLM follows your instructions, the rest is glue.\n\n**Activate:** top-right toggle Active → schedule kicks in.\n\n**Telegram silent:** Check `chatId` in Config matches your actual chat ID (from /getUpdates)."
+      }
+    }
+  ],
+  "connections": {
+    "Manual Test": {
+      "main": [[{ "node": "Config", "type": "main", "index": 0 }]]
+    },
+    "Every 30 min": {
+      "main": [[{ "node": "Config", "type": "main", "index": 0 }]]
+    },
+    "Config": {
+      "main": [[{ "node": "Binance 24h Ticker (All)", "type": "main", "index": 0 }]]
+    },
+    "Binance 24h Ticker (All)": {
+      "main": [[{ "node": "Analyze Market & Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Analyze Market & Build Prompt": {
+      "main": [[{ "node": "Generate Signals (Grok)", "type": "main", "index": 0 }]]
+    },
+    "Generate Signals (Grok)": {
+      "main": [[{ "node": "Format Telegram Message", "type": "main", "index": 0 }]]
+    },
+    "Format Telegram Message": {
+      "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}
