@@ -1,0 +1,20 @@
+# Ensure shell scripts always use LF (required for Mac/Linux execution)
+*.sh         text eol=lf
+*.bash       text eol=lf
+
+# Shell-related but Windows-native
+*.ps1        text eol=crlf
+*.cmd        text eol=crlf
+*.bat        text eol=crlf
+
+# Source files — autodetect, normalize to LF on commit
+*.md         text eol=lf
+*.json       text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.html       text eol=lf
+
+# Binary
+*.png        binary
+*.jpg        binary
+*.gif        binary
