@@ -2,8 +2,6 @@
 
 Synthesized from Gumroad listings, Medium case studies, agency pricing guides, and the n8n template marketplace.
 
-## TL;DR
-
 Two distinct ways to make money with n8n:
 
 | Path | Revenue | Effort | Best For |
