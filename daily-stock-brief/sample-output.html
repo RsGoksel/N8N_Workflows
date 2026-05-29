@@ -1,0 +1,174 @@
+﻿<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABD Piyasa Brifingi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+        
+        body {
+            font-family: 'Inter', system_ui, sans-serif;
+        }
+        
+        .header-gradient {
+            background: linear-gradient(135deg, #1e40af, #3b82f6);
+        }
+        
+        .market-table {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 15px -3px rgb(15 23 42 / 0.1);
+        }
+        
+        .insight-item {
+            position: relative;
+            padding-left: 1.25rem;
+        }
+        
+        .insight-item:before {
+            content: "â¢";
+            position: absolute;
+            left: 0;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-[#0f172a] text-[#e2e8f0] py-8 px-4">
+    <div class="max-w-[640px] mx-auto">
+        <!-- Header -->
+        <div class="header-gradient rounded-2xl p-6 mb-6 shadow-xl">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight">ABD Piyasa Brifingi</h1>
+                    <p class="text-blue-100 text-lg font-medium mt-0.5">29 MayÄ±s 2026</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-blue-200">SON GÃNCELLEME</div>
+                    <div class="font-medium">16:30 ET</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Kazananlar -->
+        <div class="mb-6">
+            <div class="flex items-center gap-x-2 mb-3 px-1">
+                <div class="w-2.5 h-2.5 bg-emerald-400 rounded-full"></div>
+                <h2 class="font-semibold text-lg tracking-tight">Kazananlar</h2>
+            </div>
+            <div class="market-table bg-slate-800 border border-slate-700">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-400 text-xs">
+                            <th class="py-3 px-4 text-left font-medium">Hisse</th>
+                            <th class="py-3 px-4 text-right font-medium">Fiyat</th>
+                            <th class="py-3 px-4 text-right font-medium">DeÄiÅim</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700">
+                        <tr>
+                            <td class="py-3 px-4 font-semibold">NVDA</td>
+                            <td class="py-3 px-4 text-right font-medium">$1,234.56</td>
+                            <td class="py-3 px-4 text-right">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-900 text-emerald-400">+8.34%</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 font-semibold">TSLA</td>
+                            <td class="py-3 px-4 text-right font-medium">$250.10</td>
+                            <td class="py-3 px-4 text-right">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-900 text-emerald-400">+5.67%</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Kaybedenler -->
+        <div class="mb-6">
+            <div class="flex items-center gap-x-2 mb-3 px-1">
+                <div class="w-2.5 h-2.5 bg-red-400 rounded-full"></div>
+                <h2 class="font-semibold text-lg tracking-tight">Kaybedenler</h2>
+            </div>
+            <div class="market-table bg-slate-800 border border-slate-700">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-400 text-xs">
+                            <th class="py-3 px-4 text-left font-medium">Hisse</th>
+                            <th class="py-3 px-4 text-right font-medium">Fiyat</th>
+                            <th class="py-3 px-4 text-right font-medium">DeÄiÅim</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700">
+                        <tr>
+                            <td class="py-3 px-4 font-semibold">META</td>
+                            <td class="py-3 px-4 text-right font-medium">$480.20</td>
+                            <td class="py-3 px-4 text-right">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-900 text-red-400">-4.55%</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Watchlist -->
+        <div class="mb-6">
+            <div class="flex items-center gap-x-2 mb-3 px-1">
+                <div class="w-2.5 h-2.5 bg-sky-400 rounded-full"></div>
+                <h2 class="font-semibold text-lg tracking-tight">Ä°zleme Listesi</h2>
+            </div>
+            <div class="market-table bg-slate-800 border border-slate-700">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-400 text-xs">
+                            <th class="py-3 px-4 text-left font-medium">Hisse</th>
+                            <th class="py-3 px-4 text-right font-medium">Fiyat</th>
+                            <th class="py-3 px-4 text-right font-medium">Ãnceki KapanÄ±Å</th>
+                            <th class="py-3 px-4 text-right font-medium">DeÄiÅim</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700">
+                        <tr>
+                            <td class="py-3 px-4 font-semibold">AAPL</td>
+                            <td class="py-3 px-4 text-right font-medium">$195.50</td>
+                            <td class="py-3 px-4 text-right text-slate-400">$191.20</td>
+                            <td class="py-3 px-4 text-right">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-900 text-emerald-400">+2.25%</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4 font-semibold">MSFT</td>
+                            <td class="py-3 px-4 text-right font-medium">$430.80</td>
+                            <td class="py-3 px-4 text-right text-slate-400">$425.95</td>
+                            <td class="py-3 px-4 text-right">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-900 text-emerald-400">+1.14%</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Ä°Ã§gÃ¶rÃ¼ler -->
+        <div class="mb-6">
+            <h2 class="font-semibold text-lg tracking-tight mb-3 px-1">GÃ¼nlÃ¼k Ä°Ã§gÃ¶rÃ¼ler</h2>
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-3 text-sm">
+                <div class="insight-item">NVDA, yapay zeka Ã§ip talebindeki gÃ¼Ã§lÃ¼ bÃ¼yÃ¼me ile %8.34 oranÄ±nda yÃ¼kseldi ve piyasanÄ±n en Ã§ok kazandÄ±ran hissesi oldu.</div>
+                <div class="insight-item">META'daki %4.55'lik dÃ¼ÅÃ¼Å, reklam gelirlerindeki yavaÅlama endiÅeleriyle iliÅkilendiriliyor.</div>
+                <div class="insight-item">AAPL ve MSFT izleme listesinde pozitif seyir devam ederken, teknoloji hisseleri genel olarak alÄ±m ilgisi gÃ¶rÃ¼yor.</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center">
+            <p class="text-[10px] text-slate-500 px-4">
+                Bu rapor yalnÄ±zca bilgilendirme amaÃ§lÄ±dÄ±r. YatÄ±rÄ±m tavsiyesi niteliÄi taÅÄ±maz. 
+                GeÃ§miÅ performans gelecekteki sonuÃ§larÄ±n garantisi deÄildir.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

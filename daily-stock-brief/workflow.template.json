@@ -1,0 +1,266 @@
+{
+  "name": "Daily Stock Brief (TR) — Alpaca + Grok",
+  "nodes": [
+    {
+      "id": "trig-manual",
+      "name": "Manual Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 200],
+      "parameters": {}
+    },
+    {
+      "id": "trig-schedule",
+      "name": "Daily 09:00 TR (Mon-Fri)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [240, 420],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, 320],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "watchlist",
+              "value": "AAPL,MSFT,NVDA,TSLA,GOOGL,META,AMZN,NFLX,AMD,SPY",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "recipientEmail",
+              "value": "{{RECIPIENT_EMAIL}}",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "llmModel",
+              "value": "grok-3-mini",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "topMoverCount",
+              "value": 5,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "http-movers",
+      "name": "Alpaca Market Movers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [720, 320],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://data.alpaca.markets/v1beta1/screener/stocks/movers?top={{ $('Config').first().json.topMoverCount }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "{{ALPACA_CRED_ID}}",
+          "name": "Alpaca Markets"
+        }
+      }
+    },
+    {
+      "id": "http-watchlist",
+      "name": "Alpaca Watchlist Snapshots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [900, 320],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://data.alpaca.markets/v2/stocks/snapshots?symbols={{ $('Config').first().json.watchlist }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "{{ALPACA_CRED_ID}}",
+          "name": "Alpaca Markets"
+        }
+      }
+    },
+    {
+      "id": "build-summary",
+      "name": "Build Market Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 320],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Alpaca shape parsing\nconst moversResp   = $('Alpaca Market Movers').first().json;\nconst snapshotResp = $('Alpaca Watchlist Snapshots').first().json;\n\nconst gainers = Array.isArray(moversResp.gainers) ? moversResp.gainers : [];\nconst losers  = Array.isArray(moversResp.losers)  ? moversResp.losers  : [];\n\nconst fmtMover = (m) => ({\n  ticker: m.symbol,\n  price: m.price,\n  change: m.change,\n  changePct: typeof m.percent_change === 'number' ? Number(m.percent_change.toFixed(2)) : null,\n});\n\n// Snapshot format: { AAPL: {dailyBar:{c,h,l,o,v}, prevDailyBar:{c,...}, latestTrade:{p,...}}, ... }\nconst watchlist = [];\nif (snapshotResp && typeof snapshotResp === 'object') {\n  for (const [symbol, snap] of Object.entries(snapshotResp)) {\n    if (!snap || typeof snap !== 'object') continue;\n    const today = snap.dailyBar?.c ?? snap.latestTrade?.p ?? null;\n    const prev  = snap.prevDailyBar?.c ?? null;\n    let changePct = null;\n    if (today != null && prev != null && prev !== 0) {\n      changePct = Number((((today - prev) / prev) * 100).toFixed(2));\n    }\n    watchlist.push({\n      ticker: symbol,\n      price: today,\n      prevClose: prev,\n      changePct,\n      volume: snap.dailyBar?.v ?? null,\n    });\n  }\n}\n\nconst payload = {\n  dateISO: new Date().toISOString().slice(0, 10),\n  dateHuman: new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' }),\n  topGainers: gainers.map(fmtMover),\n  topLosers:  losers.map(fmtMover),\n  watchlist,\n  apiHealth: {\n    moversOk:   gainers.length > 0 || losers.length > 0,\n    snapshotOk: watchlist.length > 0,\n  },\n};\n\nconst systemPrompt =\n  'Sen profesyonel bir piyasa analistisin. Türkçe, kısa ve eyleme yönelik özetler yazarsın. ' +\n  'Çıktın yalnızca temiz HTML olmalı (inline CSS, e-posta uyumlu). ' +\n  'Açıklama veya markdown asla kullanma — sadece HTML döndür. ' +\n  'Tonlama: net, profesyonel, abartısız.';\n\nconst userPrompt = [\n  `Tarih: ${payload.dateHuman}`,\n  `Veri kaynağı: Alpaca Markets`,\n  '',\n  'Piyasa verisi (JSON):',\n  JSON.stringify(payload, null, 2),\n  '',\n  'Aşağıdaki şablonu kullanarak HTML üret:',\n  '1. Üst başlık (gradient header, mavi tonları): \"ABD Piyasa Brifingi — ' + payload.dateHuman + '\"',\n  '2. \"En Çok Kazananlar\" tablosu (Sembol, Fiyat $, Değişim %). Yüzdeler için #16a34a yeşil.',\n  '3. \"En Çok Kaybedenler\" tablosu. Yüzdeler için #dc2626 kırmızı.',\n  '4. \"Watchlist Durumu\" tablosu (Sembol, Fiyat $, Önceki Kapanış, Günlük %).',\n  '5. \"Günün İçgörüleri\" başlığı + 3 madde (sektörel tema, dikkat çeken hareket, izlenecek seviye).',\n  '6. Disclaimer footer (font-size:11px, color:#6b7280): \"Bu bir yatırım tavsiyesi değildir. Veri: Alpaca Markets. Otomatik üretildi.\"',\n  '',\n  'Stil kuralları:',\n  '- Body: max-width:640px; font-family: -apple-system, system-ui, sans-serif; background:#0f172a; color:#e2e8f0; padding:16px',\n  '- Tablolar: width:100%; border-collapse:collapse; thead background:#1e293b',\n  '- TR ve TD: padding:8px 12px; border-bottom:1px solid #334155',\n  '- Sayılar sağa hizalı (text-align:right)',\n  '',\n  'Eğer veri yoksa (örn. piyasa kapalı veya API hata): bunu kibarca açıklayan kısa bir HTML mesaj döndür.'\n].join('\\n');\n\nreturn [{ json: { ...payload, systemPrompt, userPrompt } }];\n"
+      }
+    },
+    {
+      "id": "llm-call",
+      "name": "Generate Turkish Brief (Grok)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1260, 320],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Config').first().json.llmModel, temperature: 0.4, reasoning_effort: 'low', messages: [{ role: 'system', content: $json.systemPrompt }, { role: 'user', content: $json.userPrompt }] }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "{{GROK_CRED_ID}}",
+          "name": "xAI Grok"
+        }
+      }
+    },
+    {
+      "id": "extract-html",
+      "name": "Extract HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 320],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const resp = $input.first().json;\n\n// Grok response shape (OpenAI-compatible)\nlet html = resp?.choices?.[0]?.message?.content ?? null;\n\n// Strip markdown code fences if model wrapped output\nif (html) {\n  html = html.replace(/^```html\\s*\\n?/i, '').replace(/\\n?```\\s*$/i, '').trim();\n}\n\n// Fallback if LLM returned nothing or an error\nif (!html) {\n  const dateHuman = $('Build Market Summary').first().json.dateHuman ?? new Date().toLocaleDateString('tr-TR');\n  html = `<div style=\"font-family:sans-serif;padding:16px;background:#0f172a;color:#e2e8f0;max-width:640px\">`\n    + `<h2 style=\"color:#f59e0b\">ABD Piyasa Brifingi — ${dateHuman}</h2>`\n    + `<p>Üzgünüz, bugün AI özeti üretilemedi. Sebep: ${resp?.error?.message ?? 'Bilinmeyen hata'}.</p>`\n    + `<pre style=\"background:#1e293b;padding:8px;border-radius:4px;font-size:11px;overflow:auto\">${JSON.stringify(resp).slice(0, 500)}</pre>`\n    + `</div>`;\n}\n\nreturn [{\n  json: {\n    html,\n    model: resp?.model ?? 'unknown',\n    usage: resp?.usage ?? null,\n  }\n}];\n"
+      }
+    },
+    {
+      "id": "send-email",
+      "name": "Send Brief Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1620, 320],
+      "parameters": {
+        "fromEmail": "{{SMTP_FROM_EMAIL}}",
+        "toEmail": "={{ $('Config').first().json.recipientEmail }}",
+        "subject": "=ABD Piyasa Brifingi — {{ $('Build Market Summary').first().json.dateHuman }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "onError": "stopWorkflow",
+      "credentials": {
+        "smtp": {
+          "id": "{{SMTP_CRED_ID}}",
+          "name": "Gmail SMTP"
+        }
+      }
+    },
+    {
+      "id": "note-setup",
+      "name": "Workflow Mimarisi",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, 40],
+      "parameters": {
+        "width": 720,
+        "height": 140,
+        "content": "## 📊 Daily Stock Brief — Alpaca + Grok + Gmail\n\n**Tetik:** Pzt-Cuma 09:00 (TR) veya manuel\n\n**Akış:** Config → Alpaca Movers (top gainers/losers) → Alpaca Watchlist (snapshot) → JS aggregate → Grok 3 mini (TR HTML brief) → Extract → Gmail SMTP\n\n**Config node'unu düzenle:** watchlist, recipientEmail, llmModel (grok-3-mini / grok-3), topMoverCount\n\n**Schedule değiştir:** Daily 09:00 node → cron expression (örn `0 9,17 * * 1-5` sabah+akşam)\n\n**Credential'lar:** setup.ps1/setup.sh ile otomatik kuruldu. Manuel kontrol: Credentials sayfası."
+      }
+    },
+    {
+      "id": "note-quality",
+      "name": "Maliyet & Limitler",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1000, 40],
+      "parameters": {
+        "width": 720,
+        "height": 140,
+        "content": "## 💰 Maliyet: ~$0.55/yıl\n\n- **Alpaca free tier:** Movers + Snapshots endpoint'leri free. IEX-only feed (15 dk gecikmeli) — sabah briefi için yeterli.\n- **Grok 3 mini:** $0.30/M input + $0.50/M output. Günlük 1 brief ≈ $0.002 → yıllık ~$0.55.\n- **Gmail SMTP:** Free, 500 mail/gün limit.\n- **n8n:** Lokal Docker, $0.\n\n**LLM upgrade:** Daha kaliteli için `llmModel` Config'i `grok-3` yap (~10× daha pahalı ama daha derin analiz). OpenAI/Anthropic swap için body şeması zaten OpenAI uyumlu."
+      }
+    },
+    {
+      "id": "note-product",
+      "name": "İlk Test",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1740, 40],
+      "parameters": {
+        "width": 380,
+        "height": 200,
+        "content": "## ▶️ Test Et\n\n**Manuel çalıştır:**\nCtrl+Enter veya sağ alt 'Execute workflow'\n\n**Beklenen sonuç:**\nTüm node'lar yeşil ✓\nMail kutuna brief düşer\n\n**Aktive et:**\nSağ üst toggle Inactive → Active\n\n**Sorun varsa:**\nNode'a tıkla → Output sekmesi → hata mesajı.\n\nİlk schedule yarın 09:00 (TR)."
+      }
+    }
+  ],
+  "connections": {
+    "Manual Test": {
+      "main": [[{ "node": "Config", "type": "main", "index": 0 }]]
+    },
+    "Daily 09:00 TR (Mon-Fri)": {
+      "main": [[{ "node": "Config", "type": "main", "index": 0 }]]
+    },
+    "Config": {
+      "main": [[{ "node": "Alpaca Market Movers", "type": "main", "index": 0 }]]
+    },
+    "Alpaca Market Movers": {
+      "main": [[{ "node": "Alpaca Watchlist Snapshots", "type": "main", "index": 0 }]]
+    },
+    "Alpaca Watchlist Snapshots": {
+      "main": [[{ "node": "Build Market Summary", "type": "main", "index": 0 }]]
+    },
+    "Build Market Summary": {
+      "main": [[{ "node": "Generate Turkish Brief (Grok)", "type": "main", "index": 0 }]]
+    },
+    "Generate Turkish Brief (Grok)": {
+      "main": [[{ "node": "Extract HTML", "type": "main", "index": 0 }]]
+    },
+    "Extract HTML": {
+      "main": [[{ "node": "Send Brief Email", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}

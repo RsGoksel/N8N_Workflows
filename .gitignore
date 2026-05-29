@@ -1,0 +1,30 @@
+# Secrets — NEVER commit these
+*.env
+.env*
+credentials.md
+credentials.json
+*.key
+*.pem
+.mcp.json
+
+# n8n runtime data
+n8n_data/
+.n8n/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local test outputs
+latest-brief-output.html
